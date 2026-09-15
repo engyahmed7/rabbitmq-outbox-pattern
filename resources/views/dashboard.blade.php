@@ -53,31 +53,62 @@
         </section>
 
         <section class="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 lg:col-span-2">
-            <h2 class="text-lg font-semibold">How to run the demo</h2>
-            <ol class="mt-3 list-decimal space-y-2 pl-5 text-sm text-zinc-700 dark:text-zinc-300">
-                <li><code class="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">docker compose up -d</code> — RabbitMQ on 5672, UI on 15672 (<code>guest</code>/<code>guest</code>)</li>
-                <li><code class="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">php artisan migrate</code> then <code class="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">php artisan rabbitmq:setup</code></li>
-                <li>Place an order here. Confirm a <strong>pending</strong> outbox row.</li>
-                <li>Relay (button or <code class="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">php artisan outbox:relay --loop</code>)</li>
-                <li>Consume: <code class="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">php artisan rabbitmq:consume</code></li>
+            <h2 class="text-lg font-semibold">How messages move</h2>
+            <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                HTTP never talks to RabbitMQ. The database commits first; the relay publishes later; workers ack by hand.
+            </p>
+
+            <ol class="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                <li class="flex gap-3 rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950">
+                    <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-orange-600 text-xs font-semibold text-white">1</span>
+                    <div class="min-w-0">
+                        <p class="text-sm font-semibold">Place</p>
+                        <p class="mt-0.5 text-xs text-zinc-600 dark:text-zinc-400">One transaction writes the order and a <span class="font-medium text-zinc-800 dark:text-zinc-200">pending</span> outbox row.</p>
+                    </div>
+                </li>
+                <li class="flex gap-3 rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950">
+                    <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-orange-600 text-xs font-semibold text-white">2</span>
+                    <div class="min-w-0">
+                        <p class="text-sm font-semibold">Relay</p>
+                        <p class="mt-0.5 text-xs text-zinc-600 dark:text-zinc-400">Claims pending rows and publishes to <code class="rounded bg-zinc-200 px-1 dark:bg-zinc-800">{{ config('rabbitmq.exchanges.topic') }}</code> with confirms.</p>
+                    </div>
+                </li>
+                <li class="flex gap-3 rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950">
+                    <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-orange-600 text-xs font-semibold text-white">3</span>
+                    <div class="min-w-0">
+                        <p class="text-sm font-semibold">Route</p>
+                        <p class="mt-0.5 text-xs text-zinc-600 dark:text-zinc-400"><code class="rounded bg-zinc-200 px-1 dark:bg-zinc-800">order.created</code> and <code class="rounded bg-zinc-200 px-1 dark:bg-zinc-800">order.cancelled</code> each bind to one work queue.</p>
+                    </div>
+                </li>
+                <li class="flex gap-3 rounded-lg bg-zinc-50 p-3 dark:bg-zinc-950">
+                    <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-orange-600 text-xs font-semibold text-white">4</span>
+                    <div class="min-w-0">
+                        <p class="text-sm font-semibold">Consume</p>
+                        <p class="mt-0.5 text-xs text-zinc-600 dark:text-zinc-400">Ack on success. Inbox <code class="rounded bg-zinc-200 px-1 dark:bg-zinc-800">(message_id, queue)</code> makes redelivery safe.</p>
+                    </div>
+                </li>
             </ol>
 
-            <div class="mt-6 grid gap-3 sm:grid-cols-2">
-                <article class="rounded-lg bg-zinc-50 p-4 text-sm dark:bg-zinc-950">
-                    <h3 class="font-semibold">Topic exchange</h3>
-                    <p class="mt-1 text-zinc-600 dark:text-zinc-400">The relay publishes to <code>demo.topic</code>. <code>order.created</code> and <code>order.cancelled</code> each bind to one work queue.</p>
+            <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                <article class="rounded-lg border border-zinc-200 p-4 text-sm dark:border-zinc-800">
+                    <p class="text-[11px] font-semibold uppercase tracking-wide text-orange-600">Topic</p>
+                    <h3 class="mt-1 font-semibold">{{ config('rabbitmq.exchanges.topic') }}</h3>
+                    <p class="mt-1 text-zinc-600 dark:text-zinc-400">Domain events. The relay never publishes to a queue name; the exchange copies each routing key to its bound work queue.</p>
                 </article>
-                <article class="rounded-lg bg-zinc-50 p-4 text-sm dark:bg-zinc-950">
-                    <h3 class="font-semibold">Queues</h3>
-                    <p class="mt-1 text-zinc-600 dark:text-zinc-400">Durable classic work queues, TTL retry queues, and <code>demo.orders.dead</code>. Production can swap the same names to quorum queues.</p>
+                <article class="rounded-lg border border-zinc-200 p-4 text-sm dark:border-zinc-800">
+                    <p class="text-[11px] font-semibold uppercase tracking-wide text-orange-600">Direct</p>
+                    <h3 class="mt-1 font-semibold">{{ config('rabbitmq.exchanges.retry') }} · {{ config('rabbitmq.exchanges.dlx') }}</h3>
+                    <p class="mt-1 text-zinc-600 dark:text-zinc-400">Plumbing only. Retry is the work-queue DLX after a nack. DLX parks poison after the retry limit.</p>
                 </article>
-                <article class="rounded-lg bg-zinc-50 p-4 text-sm dark:bg-zinc-950">
-                    <h3 class="font-semibold">Manual ack</h3>
-                    <p class="mt-1 text-zinc-600 dark:text-zinc-400">Auto-ack drops work on crash. This consumer acks after a successful handler, nacks without requeue to hit the retry TTL, then publishes to the DLQ.</p>
+                <article class="rounded-lg border border-zinc-200 p-4 text-sm dark:border-zinc-800">
+                    <p class="text-[11px] font-semibold uppercase tracking-wide text-orange-600">Manual ack</p>
+                    <h3 class="mt-1 font-semibold">Prefetch {{ config('rabbitmq.prefetch_count') }}</h3>
+                    <p class="mt-1 text-zinc-600 dark:text-zinc-400">Ack after the handler succeeds. <code class="rounded bg-zinc-100 px-1 dark:bg-zinc-800">nack(requeue: false)</code> dead-letters into the TTL retry hop instead of spinning the same queue.</p>
                 </article>
-                <article class="rounded-lg bg-zinc-50 p-4 text-sm dark:bg-zinc-950">
-                    <h3 class="font-semibold">Dead-letter queue</h3>
-                    <p class="mt-1 text-zinc-600 dark:text-zinc-400">After {{ config('rabbitmq.max_retries') }} failures, poison messages are published to <code>demo.orders.dead</code> so they stop blocking the work queue.</p>
+                <article class="rounded-lg border border-zinc-200 p-4 text-sm dark:border-zinc-800">
+                    <p class="text-[11px] font-semibold uppercase tracking-wide text-orange-600">TTL + DLQ</p>
+                    <h3 class="mt-1 font-semibold">{{ (int) config('rabbitmq.retry_ttl_ms') / 1000 }}s delay · {{ config('rabbitmq.max_retries') }} retries</h3>
+                    <p class="mt-1 text-zinc-600 dark:text-zinc-400">Expired retry messages return to the work queue. After the limit, PHP publishes to <code class="rounded bg-zinc-100 px-1 dark:bg-zinc-800">{{ config('rabbitmq.queues.dead') }}</code> and acks so poison stops blocking.</p>
                 </article>
             </div>
         </section>
