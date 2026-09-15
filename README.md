@@ -1,6 +1,6 @@
 # Transactional Outbox with RabbitMQ
 
-A Laravel service that places and cancels orders **without talking to the broker on the HTTP path**. The order and an outbox row commit in one SQLite transaction. A relay publishes later with **publisher confirms**. Workers consume with **manual acknowledgements**, TTL retries, and a **dead-letter queue**.
+A Laravel service that places and cancels orders **without talking to the broker on the HTTP path**. The order and an outbox row commit in one MySQL transaction. A relay publishes later with **publisher confirms**. Workers consume with **manual acknowledgements**, TTL retries, and a **dead-letter queue**.
 
 ---
 
@@ -26,7 +26,7 @@ flowchart LR
     end
 ```
 
-HTTP only writes SQLite. The relay is the only publisher of real orders. See the [Transactional Outbox](https://microservices.io/patterns/data/transactional-outbox.html) pattern.
+HTTP only writes the database. The relay is the only publisher of real orders. See the [Transactional Outbox](https://microservices.io/patterns/data/transactional-outbox.html) pattern.
 
 ---
 
@@ -37,7 +37,7 @@ sequenceDiagram
     autonumber
     actor User
     participant HTTP as Dashboard
-    participant DB as SQLite
+    participant DB as Database
     participant Relay as OutboxRelay
     participant Topic as demo.topic
     participant Queue as demo.orders.created
@@ -68,7 +68,7 @@ Cancel follows the same pattern with routing key `order.cancelled` and queue `de
 
 ## Topology
 
-Durable **classic** queues. Production can keep the same names and switch to quorum queues.
+Durable **classic** queues.
 
 ```mermaid
 flowchart TB
@@ -165,6 +165,7 @@ Idempotency: unique `(message_id, queue)` on `processed_messages`. The outbox `u
 
 - PHP 8.3+ (8.4 recommended)
 - Composer, Node.js (Vite / Tailwind)
+- MySQL 8+
 - Docker
 - Docker Compose **v2** (`docker compose`)
 ---
@@ -177,7 +178,7 @@ cp .env.example .env
 php artisan key:generate
 php artisan migrate
 npm install && npm run build
-
+php artisan migrate
 docker compose up -d     
 php artisan rabbitmq:setup
 ```
